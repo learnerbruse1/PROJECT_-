@@ -20,10 +20,11 @@ VALID_TYPES = set(DEFAULT_RADIUS)
 def _parse_bbox(bbox: str) -> list[float]:
     try:
         parts = [float(x) for x in bbox.split(",")]
-        assert len(parts) == 4
-        return parts
-    except Exception:
+    except ValueError:
         raise HTTPException(400, "bbox 格式错误，应为 minLng,minLat,maxLng,maxLat")
+    if len(parts) != 4:
+        raise HTTPException(400, "bbox 格式错误，应为 minLng,minLat,maxLng,maxLat")
+    return parts
 
 
 def _check_type(fac_type: str):
@@ -57,14 +58,14 @@ async def population_heatmap(
 @router.get("/facilities", summary="公共设施列表")
 async def facilities(
     bbox: str = Query(...),
-    type: Optional[str] = Query(None, description="school / hospital / park"),
+    facility_type: Optional[str] = Query(None, description="school / hospital / park"),
     page: int = Query(1, ge=1),
     page_size: int = Query(500, ge=1, le=2000),
 ):
-    if type:
-        _check_type(type)
+    if facility_type:
+        _check_type(facility_type)
     bbox_coords = _parse_bbox(bbox)
-    total, items = await query_facilities(bbox_coords, type, page, page_size)
+    total, items = await query_facilities(bbox_coords, facility_type, page, page_size)
     return {
         "code": 200,
         "data": {"total": total, "page": page, "page_size": page_size, "facilities": items},

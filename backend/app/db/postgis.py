@@ -1,4 +1,5 @@
 """PostGIS 连接池与所有空间查询函数"""
+import asyncio
 import json
 import os
 from typing import Optional
@@ -8,12 +9,15 @@ import asyncpg
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/gisdb")
 
 _pool: Optional[asyncpg.Pool] = None
+_pool_lock = asyncio.Lock()
 
 
 async def get_pool() -> asyncpg.Pool:
     global _pool
     if _pool is None:
-        _pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
+        async with _pool_lock:
+            if _pool is None:  # double-checked locking
+                _pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
     return _pool
 
 
@@ -50,26 +54,32 @@ async def query_facilities(
     page: int,
     page_size: int,
 ) -> tuple[int, list[dict]]:
-    """分页查询设施列表，可按 type 过滤"""
+    """分页查询设施列表，可按 type 过滤；用窗口函数一次查询同时获取 total。"""
     pool = await get_pool()
-    base = "FROM facilities WHERE geom && ST_MakeEnvelope($1,$2,$3,$4,4326)"
+    where = "WHERE geom && ST_MakeEnvelope($1,$2,$3,$4,4326)"
     args: list = list(bbox)
 
     if fac_type:
-        base += " AND type = $5"
+        where += " AND type = $5"
         args.append(fac_type)
-        offset_idx, limit_idx = "$6", "$7"
-    else:
-        offset_idx, limit_idx = "$5", "$6"
 
-    total = await pool.fetchval(f"SELECT COUNT(*) {base}", *args)
-    args += [page_size, (page - 1) * page_size]
+    offset = (page - 1) * page_size
+    # COUNT(*) OVER() 与数据行同时返回，避免两次独立查询
     rows = await pool.fetch(
-        f"SELECT id, name, type, ST_X(geom) AS lng, ST_Y(geom) AS lat {base} "
-        f"LIMIT {limit_idx} OFFSET {offset_idx}",
+        f"SELECT id, name, type, ST_X(geom) AS lng, ST_Y(geom) AS lat,"
+        f"       COUNT(*) OVER() AS _total"
+        f" FROM facilities {where}"
+        f" LIMIT {page_size} OFFSET {offset}",
         *args,
     )
-    return int(total), [dict(r) for r in rows]
+    total = int(rows[0]["_total"]) if rows else 0
+    items = [{k: v for k, v in r.items() if k != "_total"} for r in rows]
+
+    # 当 page > 1 且当页无数据时，仍需返回正确 total
+    if not rows and page > 1:
+        total = await pool.fetchval(f"SELECT COUNT(*) FROM facilities {where}", *args) or 0
+
+    return total, items
 
 
 # ── 供需统计 ──────────────────────────────────────────────────────────────────
@@ -85,14 +95,16 @@ async def query_supply_demand(bbox: list[float], fac_type: str, radius: int) -> 
         WITH envelope AS (
             SELECT ST_MakeEnvelope($1,$2,$3,$4,4326) AS geom
         ),
-        covered_area AS (
-            SELECT ST_Union(ST_Buffer(f.geom::geography, $5)::geometry) AS geom
+        facs AS (
+            SELECT ST_Buffer(f.geom::geography, $5)::geometry AS buf
             FROM   facilities f, envelope e
             WHERE  f.type = $6 AND ST_Within(f.geom, e.geom)
+        ),
+        covered_area AS (
+            SELECT ST_Union(buf) AS geom FROM facs
         )
         SELECT
-            (SELECT COUNT(*) FROM facilities f, envelope e
-             WHERE  f.type = $6 AND ST_Within(f.geom, e.geom))  AS facility_count,
+            (SELECT COUNT(*) FROM facs)                          AS facility_count,
             COUNT(*)                                             AS total,
             COUNT(*) FILTER (
                 WHERE ST_Within(p.geom, (SELECT geom FROM covered_area))
@@ -112,7 +124,7 @@ async def query_blind_spots(
 ) -> list[dict]:
     """
     盲区 = 人口密度 > pop_threshold 且不在任何设施服务区内。
-    PostGIS: ST_Difference(高密度聚合区, 设施缓冲 union)
+    当无设施时 covered_area.geom 为 NULL，COALESCE 替换为空几何确保盲区正常返回。
     """
     pool = await get_pool()
     rows = await pool.fetch(
@@ -121,7 +133,10 @@ async def query_blind_spots(
             SELECT ST_MakeEnvelope($1,$2,$3,$4,4326) AS geom
         ),
         covered_area AS (
-            SELECT ST_Union(ST_Buffer(f.geom::geography, $5)::geometry) AS geom
+            SELECT COALESCE(
+                ST_Union(ST_Buffer(f.geom::geography, $5)::geometry),
+                ST_GeomFromText('GEOMETRYCOLLECTION EMPTY', 4326)
+            ) AS geom
             FROM   facilities f, envelope e
             WHERE  f.type = $6 AND ST_Within(f.geom, e.geom)
         ),
@@ -171,4 +186,4 @@ async def query_coverage(bbox: list[float], fac_type: str, radius: int) -> dict:
         """,
         *bbox, radius, fac_type,
     )
-    return json.loads(row["geojson"]) if row and row["geojson"] else {"type": "MultiPolygon", "coordinates": []}
+    return json.loads(row["geojson"]) if row and row["geojson"] else {"type": "GeometryCollection", "geometries": []}
