@@ -1,0 +1,15 @@
+{
+  "name": "gis-population-facility",
+  "version": "1.0.0",
+  "description": "洪山区人口分布热力与公共设施叠加分析系统 —— 前后端一键启动",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node scripts/start.mjs",
+    "dev": "node scripts/start.mjs",
+    "backend": "cd backend && python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
+    "frontend": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "setup": "pip install -r backend/requirements.txt && npm --prefix frontend install"
+  }
+}

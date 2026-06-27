@@ -2,3 +2,6 @@ fastapi==0.115.0
 uvicorn[standard]==0.30.0
 pydantic==2.9.0
 asyncpg==0.29.0
+# 文件后端（DATA_BACKEND=geojson，默认）所需的空间计算库；
+# PostGIS 后端不需要，但一并安装可在两种模式间自由切换。
+shapely>=2.0
