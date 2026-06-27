@@ -3,7 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.db.postgis import (
+from app.db.provider import (
     query_blind_spots,
     query_coverage,
     query_facilities,

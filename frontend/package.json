@@ -1,0 +1,22 @@
+{
+  "name": "gis-population-facility-frontend",
+  "version": "1.0.0",
+  "description": "人口分布热力与公共设施叠加 — 前端（Vue3 + Leaflet）",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "vite",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "dependencies": {
+    "leaflet": "1.9.4",
+    "leaflet.heat": "0.2.0",
+    "vue": "3.5.39"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.7",
+    "vite": "8.1.0"
+  }
+}
