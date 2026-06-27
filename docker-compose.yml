@@ -1,0 +1,36 @@
+# 人口分布热力与公共设施叠加分析系统 —— 后端 + 前端 一键部署（F12）
+# 默认使用文件后端（读取 ./data 下的 GeoJSON），无需数据库。
+#
+#   docker compose up --build
+#   前端 http://localhost:8080   后端 http://localhost:8000/docs
+
+services:
+  backend:
+    build: ./backend
+    environment:
+      - DATA_BACKEND=geojson
+      - DATA_DIR=/data
+      - CORS_ORIGINS=*
+    volumes:
+      - ./data/processed:/data:ro
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+# ── 可选：PostGIS 后端路径（需另行编写数据导入脚本，详见 docs/backend-交接文档.md）──
+#  db:
+#    image: postgis/postgis:16-3.4
+#    environment:
+#      - POSTGRES_DB=gisdb
+#      - POSTGRES_PASSWORD=postgres
+#    volumes:
+#      - ./backend/sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+#    ports:
+#      - "5432:5432"
