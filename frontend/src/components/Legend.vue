@@ -1,6 +1,20 @@
 <script setup>
+import { computed } from 'vue'
 import { store } from '../stores/mapStore.js'
 import { HEAT_LEGEND, FACILITY_TYPES } from '../utils/geoUtils.js'
+
+function rgba(hex, alpha) {
+  const value = hex.replace('#', '')
+  const r = parseInt(value.slice(0, 2), 16)
+  const g = parseInt(value.slice(2, 4), 16)
+  const b = parseInt(value.slice(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+const coverageLegendStyle = computed(() => {
+  const color = FACILITY_TYPES[store.analysisType]?.color || FACILITY_TYPES.school.color
+  return { background: rgba(color, 0.3), borderColor: color }
+})
 </script>
 
 <template>
@@ -18,7 +32,7 @@ import { HEAT_LEGEND, FACILITY_TYPES } from '../utils/geoUtils.js'
       <div class="item" v-for="t in ['school', 'hospital', 'park']" :key="t">
         <span class="dot" :style="{ background: FACILITY_TYPES[t].color }" />{{ FACILITY_TYPES[t].label }}
       </div>
-      <div class="item"><span class="box cover" />服务覆盖区</div>
+      <div class="item"><span class="box cover" :style="coverageLegendStyle" />服务覆盖区</div>
       <div class="item"><span class="box blind" />供给盲区</div>
     </div>
   </div>
@@ -78,8 +92,7 @@ import { HEAT_LEGEND, FACILITY_TYPES } from '../utils/geoUtils.js'
   border-radius: 2px;
 }
 .box.cover {
-  background: rgba(59, 130, 246, 0.3);
-  border: 1px solid #3b82f6;
+  border: 1px solid;
 }
 .box.blind {
   background: rgba(239, 68, 68, 0.4);

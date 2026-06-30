@@ -14,19 +14,25 @@ if _BACKEND == "postgis":
     from app.db.postgis import (
         close_pool,
         query_blind_spots,
+        query_blind_spots_all,
         query_coverage,
+        query_coverage_all,
         query_facilities,
         query_heatmap,
         query_supply_demand,
+        query_supply_demand_all,
     )
 else:
     from app.db.geojson_store import (
         close_pool,
         query_blind_spots,
+        query_blind_spots_all,
         query_coverage,
+        query_coverage_all,
         query_facilities,
         query_heatmap,
         query_supply_demand,
+        query_supply_demand_all,
     )
 
 # 元数据接口固定走文件实现（边界与数据自检都基于本地文件）
@@ -41,8 +47,11 @@ __all__ = [
     "get_boundary",
     "load_data",
     "query_blind_spots",
+    "query_blind_spots_all",
     "query_coverage",
+    "query_coverage_all",
     "query_facilities",
     "query_heatmap",
     "query_supply_demand",
+    "query_supply_demand_all",
 ]

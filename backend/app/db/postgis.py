@@ -187,3 +187,13 @@ async def query_coverage(bbox: list[float], fac_type: str, radius: int) -> dict:
         *bbox, radius, fac_type,
     )
     return json.loads(row["geojson"]) if row and row["geojson"] else {"type": "GeometryCollection", "geometries": []}
+
+
+async def query_coverage_all(bbox, radii):
+    raise NotImplementedError('PostGIS 后端暂未实现，请使用默认 geojson 后端')
+
+async def query_blind_spots_all(bbox, radii, pop_threshold):
+    raise NotImplementedError('PostGIS 后端暂未实现，请使用默认 geojson 后端')
+
+async def query_supply_demand_all(bbox, radii):
+    raise NotImplementedError('PostGIS 后端暂未实现，请使用默认 geojson 后端')

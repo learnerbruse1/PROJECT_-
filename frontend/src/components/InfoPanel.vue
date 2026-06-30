@@ -48,7 +48,9 @@ const dataSources = [
 
 <style scoped>
 .info-panel {
-  width: 270px;
+  width: 230px;
+  font-size: 11px;
+  padding: 8px 10px;
 }
 .hd {
   display: flex;
@@ -57,10 +59,10 @@ const dataSources = [
   gap: 8px;
 }
 h3 {
-  margin: 0 0 10px;
-  font-size: 13px;
+  margin: 0 0 6px;
+  font-size: 12px;
   color: #111827;
-  line-height: 1.4;
+  line-height: 1.3;
 }
 .close {
   border: none;
@@ -77,14 +79,14 @@ h3 {
   border-collapse: collapse;
 }
 .kv td {
-  padding: 5px 0;
-  font-size: 12px;
+  padding: 3px 0;
+  font-size: 11px;
   vertical-align: top;
   border-bottom: 1px solid #f3f4f6;
 }
 .kv .k {
   color: #9ca3af;
-  width: 78px;
+  width: 68px;
   white-space: nowrap;
 }
 .kv .v {

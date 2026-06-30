@@ -47,13 +47,49 @@ _M_PER_DEG_LAT = 111320.0
 _M_PER_DEG_LNG = 111320.0 * math.cos(math.radians(_LAT0))
 
 
-def _to_metric(lng: float, lat: float) -> tuple[float, float]:
+def _to_metric(lng: float, lat: float, z=None):
     """经纬度 → 局部平面米坐标（等距近似，适用于区县尺度缓冲）。"""
-    return (lng - _LNG0) * _M_PER_DEG_LNG, (lat - _LAT0) * _M_PER_DEG_LAT
+    x = (lng - _LNG0) * _M_PER_DEG_LNG
+    y = (lat - _LAT0) * _M_PER_DEG_LAT
+    return (x, y) if z is None else (x, y, z)
 
 
 def _to_lnglat_xy(x: float, y: float, z=None):
-    return _LNG0 + x / _M_PER_DEG_LNG, _LAT0 + y / _M_PER_DEG_LAT
+    lng = _LNG0 + x / _M_PER_DEG_LNG
+    lat = _LAT0 + y / _M_PER_DEG_LAT
+    return (lng, lat) if z is None else (lng, lat, z)
+
+
+def _boundary_geometries():
+    """返回经纬度与米制坐标下的真实研究区边界，用于裁剪分析面。"""
+    boundary_lnglat = _get_boundary_polygon()
+    if boundary_lnglat is None or boundary_lnglat.is_empty:
+        return None, None
+    return boundary_lnglat, transform(_to_metric, boundary_lnglat)
+
+
+def _polygonal_only(geom):
+    """从运算结果中保留 Polygon/MultiPolygon，丢弃边界线等非面要素。"""
+    if geom.is_empty or geom.geom_type in ("Polygon", "MultiPolygon"):
+        return geom
+    if geom.geom_type != "GeometryCollection":
+        return geom
+    polys = [g for g in geom.geoms if g.geom_type in ("Polygon", "MultiPolygon") and not g.is_empty]
+    return unary_union(polys) if polys else geom
+
+
+def _clip_blind_zone(zone, boundary_metric, boundary_lnglat):
+    """双重裁剪盲区，确保返回的 GeoJSON 面严格落在研究边界内。"""
+    if boundary_metric is not None:
+        zone = _polygonal_only(zone.intersection(boundary_metric))
+    if zone.is_empty or zone.geom_type not in ("Polygon", "MultiPolygon"):
+        return None, None
+    zone_lnglat = transform(_to_lnglat_xy, zone)
+    if boundary_lnglat is not None:
+        zone_lnglat = _polygonal_only(zone_lnglat.intersection(boundary_lnglat))
+    if zone_lnglat.is_empty or zone_lnglat.geom_type not in ("Polygon", "MultiPolygon"):
+        return None, None
+    return zone, zone_lnglat
 
 
 # ── 内存数据 ──────────────────────────────────────────────────────────────────
@@ -277,6 +313,7 @@ def _blind_spots_sync(bbox: tuple, fac_type: str, radius: int, pop_threshold: fl
     if len(blind) == 0:
         return []
     coverage = unary_union(circles) if circles else None
+    boundary_lnglat, boundary_metric = _boundary_geometries()
 
     features = []
     for members in _cluster_blind_points(blind):
@@ -288,9 +325,10 @@ def _blind_spots_sync(bbox: tuple, fac_type: str, radius: int, pop_threshold: fl
         ).convex_hull
         if metric_hull.geom_type != "Polygon":
             continue
-        # 扣除已被服务区覆盖的部分，确保盲区不与覆盖区重叠
+        # 扣除已被服务区覆盖的部分，并裁剪到真实行政边界内，避免凸包越界。
         zone = metric_hull.difference(coverage) if coverage is not None and not coverage.is_empty else metric_hull
-        if zone.is_empty or zone.geom_type not in ("Polygon", "MultiPolygon"):
+        zone, zone_lnglat = _clip_blind_zone(zone, boundary_metric, boundary_lnglat)
+        if zone is None:
             continue
         features.append({
             "type": "Feature",
@@ -299,7 +337,7 @@ def _blind_spots_sync(bbox: tuple, fac_type: str, radius: int, pop_threshold: fl
                 "area_km2": round(zone.area / 1_000_000, 3),
                 "point_count": int(len(cpts)),
             },
-            "geometry": mapping(transform(_to_lnglat_xy, zone)),
+            "geometry": mapping(zone_lnglat),
         })
     features.sort(key=lambda f: f["properties"]["area_km2"], reverse=True)
     return features
@@ -315,7 +353,11 @@ async def query_blind_spots(
     )
 
 
-# ── ⑤ 缓冲覆盖区 ──────────────────────────────────────────────────────────────
+# 各类型默认服务半径（米），与 routers/statistics.py 一致
+DEFAULT_RADIUS = {"school": 1000, "hospital": 2000, "park": 500}
+
+
+# ── ⑤ 缓冲覆盖区（单类型） ─────────────────────────────────────────────────────
 
 @lru_cache(maxsize=128)
 def _coverage_sync(bbox: tuple, fac_type: str, radius: int) -> dict:
@@ -331,7 +373,118 @@ async def query_coverage(bbox: list[float], fac_type: str, radius: int) -> dict:
     return await asyncio.to_thread(_coverage_sync, tuple(bbox), fac_type, int(radius))
 
 
+
+# 全类型覆盖区叠加
+
+async def query_coverage_all(bbox: list[float], radii: dict[str, int]) -> dict:
+    """返回全部3类设施合并后的覆盖区（union），统一为一个面。"""
+    _ensure_loaded()
+    all_circles = []
+    for fac_type in ("school", "hospital", "park"):
+        circles, _ = _facility_circles(bbox, fac_type, int(radii[fac_type]))
+        all_circles.extend(circles)
+    if not all_circles:
+        return {"type": "FeatureCollection", "features": []}
+    merged = unary_union(all_circles)
+    if merged.is_empty:
+        return {"type": "FeatureCollection", "features": []}
+    return {"type": "FeatureCollection", "features": [{
+        "type": "Feature",
+        "geometry": mapping(transform(_to_lnglat_xy, merged)),
+        "properties": {"facility_type": "all"},
+    }]}
+
+
+async def query_blind_spots_all(bbox: list[float], radii: dict[str, int], pop_threshold: float) -> list[dict]:
+    """盲区：人口密度 > 阈值 且 不被任何一类设施覆盖的区域。"""
+    _ensure_loaded()
+    sub = _pop_in_bbox(bbox)
+    if len(sub) == 0:
+        return []
+    high = sub[sub[:, 2] > pop_threshold]
+    if len(high) == 0:
+        return []
+    all_circles = []
+    for fac_type in ("school", "hospital", "park"):
+        circles, _ = _facility_circles(bbox, fac_type, int(radii[fac_type]))
+        all_circles.extend(circles)
+    blind = high[~_covered_mask(high[:, :2], all_circles)]
+    if len(blind) == 0:
+        return []
+    coverage = unary_union(all_circles) if all_circles else None
+    boundary_lnglat, boundary_metric = _boundary_geometries()
+    features = []
+    for members in _cluster_blind_points(blind):
+        if len(members) < 3:
+            continue
+        cpts = blind[members]
+        metric_hull = unary_union(
+            [Point(_to_metric(r[0], r[1])) for r in cpts]
+        ).convex_hull
+        if metric_hull.geom_type != "Polygon":
+            continue
+        zone = metric_hull.difference(coverage) if (coverage is not None and not coverage.is_empty) else metric_hull
+        zone, zone_lnglat = _clip_blind_zone(zone, boundary_metric, boundary_lnglat)
+        if zone is None:
+            continue
+        features.append({
+            "type": "Feature",
+            "properties": {
+                "avg_population_density": round(float(cpts[:, 2].mean()), 1),
+                "area_km2": round(zone.area / 1_000_000, 3),
+                "point_count": int(len(cpts)),
+            },
+            "geometry": mapping(zone_lnglat),
+        })
+    features.sort(key=lambda f: f["properties"]["area_km2"], reverse=True)
+    return features
+
+
+async def query_supply_demand_all(bbox: list[float], radii: dict[str, int]) -> dict:
+    """统计全部3类设施的合并覆盖情况。"""
+    _ensure_loaded()
+    sub = _pop_in_bbox(bbox)
+    total = int(len(sub))
+    all_circles = []
+    total_facilities = 0
+    for fac_type in ("school", "hospital", "park"):
+        circles, n = _facility_circles(bbox, fac_type, int(radii[fac_type]))
+        all_circles.extend(circles)
+        total_facilities += n
+    covered = int(_covered_mask(sub[:, :2], all_circles).sum()) if total else 0
+    return {
+        "facility_count": total_facilities,
+        "total": total,
+        "covered": covered,
+        "coverage_rate": round(covered / total, 3) if total else 0,
+    }
+
+
 # ── 元数据 / 健康检查（F11 数据状态自检） ────────────────────────────────────
+
+def _get_boundary_polygon():
+    """加载洪山区边界多边形（支持 Polygon / MultiPolygon），用于裁剪盲区至研究区内。"""
+    try:
+        gj = _read_geojson(BOUNDARY_FILE)
+        from shapely.geometry import shape as _shape, MultiPolygon as _MultiPolygon, Polygon as _Polygon
+        from shapely.ops import unary_union as _union
+        polys = []
+        for feat in gj.get("features", []):
+            geom = feat.get("geometry")
+            if not geom:
+                continue
+            s = _shape(geom)
+            if s.geom_type == "Polygon":
+                polys.append(s)
+            elif s.geom_type == "MultiPolygon":
+                polys.extend(list(s.geoms))
+        if not polys:
+            return None
+        # 合并所有子多边形，保留真实形状（绝不取convex_hull，否则边界会扩大近一倍）
+        return _union(polys)
+    except Exception:
+        return None
+
 
 def data_status() -> dict:
     """检测本地数据文件是否就绪，供前端启动自检（F11）。"""
