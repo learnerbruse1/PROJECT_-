@@ -11,6 +11,7 @@
     "preview": "vite preview --port 4173"
   },
   "dependencies": {
+    "gis-population-facility": "file:..",
     "leaflet": "1.9.4",
     "leaflet.heat": "0.2.0",
     "vue": "3.5.39"
