@@ -26,16 +26,29 @@ async function refresh() {
   store.loading.coverage = true
   try {
     const t = store.analysisType
-    const data = await api.coverage(store.bbox, t, store.radiusOf(t))
-    if (my !== token || !store.layers.coverage || !map.value) return
-    clear()
-    const geom = data.coverage_geojson
-    if (!geom || (geom.type === 'GeometryCollection' && !(geom.geometries || []).length)) return
-    const color = FACILITY_TYPES[t].color
-    layer = L.geoJSON(
-      { type: 'Feature', geometry: geom, properties: {} },
-      { style: { color, weight: 1, fillColor: color, fillOpacity: 0.18, opacity: 0.5 }, interactive: false },
-    ).addTo(m)
+    if (t === 'all') {
+      const data = await api.coverageAll(store.bbox, store.radiiByType())
+      if (my !== token || !store.layers.coverage || !map.value) return
+      clear()
+      const fc = data.coverage_geojson
+      if (!fc || !(fc.features || []).length) return
+      const color = FACILITY_TYPES[t].color
+      layer = L.geoJSON(fc, {
+        style: { color, weight: 1, fillColor: color, fillOpacity: 0.15, opacity: 0.5 },
+        interactive: false,
+      }).addTo(m)
+    } else {
+      const data = await api.coverage(store.bbox, t, store.radiusOf(t))
+      if (my !== token || !store.layers.coverage || !map.value) return
+      clear()
+      const geom = data.coverage_geojson
+      if (!geom || (geom.type === 'GeometryCollection' && !(geom.geometries || []).length)) return
+      const color = FACILITY_TYPES[t].color
+      layer = L.geoJSON(
+        { type: 'Feature', geometry: geom, properties: {} },
+        { style: { color, weight: 1, fillColor: color, fillOpacity: 0.18, opacity: 0.5 }, interactive: false },
+      ).addTo(m)
+    }
   } catch (e) {
     store.setError('覆盖区加载失败：' + e.message)
   } finally {
@@ -45,7 +58,14 @@ async function refresh() {
 
 watch(map, refresh, { immediate: true })
 watch(
-  () => [store.layers.coverage, store.analysisType, store.bufferRadius[store.analysisType], store.bbox],
+  () => [
+    store.layers.coverage,
+    store.analysisType,
+    store.bufferRadius.school,
+    store.bufferRadius.hospital,
+    store.bufferRadius.park,
+    store.bbox,
+  ],
   refresh,
 )
 

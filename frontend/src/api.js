@@ -3,6 +3,14 @@
 
 const BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
+function radiiParams(radii) {
+  return radii ? {
+    school_radius: radii.school,
+    hospital_radius: radii.hospital,
+    park_radius: radii.park,
+  } : {}
+}
+
 async function get(path, params) {
   const qs = params ? '?' + new URLSearchParams(params).toString() : ''
   let res
@@ -48,4 +56,13 @@ export const api = {
   // F6 设施服务覆盖区
   coverage: (bbox, facility_type, buffer_radius) =>
     get('/analysis/coverage', { bbox, facility_type, ...(buffer_radius ? { buffer_radius } : {}) }),
+  // 全类型覆盖区叠加
+  coverageAll: (bbox, radii) =>
+    get('/analysis/coverage-all', { bbox, ...radiiParams(radii) }),
+  // 全类型盲区识别
+  blindSpotsAll: (bbox, radii, pop_threshold) =>
+    get('/analysis/blind-spots-all', { bbox, ...radiiParams(radii), ...(pop_threshold != null ? { pop_threshold } : {}) }),
+  // 全类型供需统计
+  supplyDemandAll: (bbox, radii) =>
+    get('/analysis/supply-demand-all', { bbox, ...radiiParams(radii) }),
 }

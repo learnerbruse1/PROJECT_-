@@ -1,16 +1,20 @@
 <script setup>
 import { onMounted, watch } from 'vue'
 import { store } from '../stores/mapStore.js'
-import { FACILITY_TYPES, FACILITY_ORDER, fmt, pct } from '../utils/geoUtils.js'
+import { FACILITY_TYPES, FACILITY_POINT_ORDER, fmt, pct } from '../utils/geoUtils.js'
 
 let timer = null
 function scheduleReload() {
   clearTimeout(timer)
-  timer = setTimeout(() => store.loadStats(), 500)
+  timer = setTimeout(() => {
+    store.loadStats()
+  }, 500)
 }
 
 onMounted(() => {
-  if (store.ready) store.loadStats()
+  if (store.ready) {
+    store.loadStats()
+  }
 })
 
 // 供需统计固定按全区计算，不随地图视野变化；仅在服务半径或数据就绪状态变化时刷新
@@ -38,7 +42,7 @@ function rateColor(rate) {
 
     <div class="cards">
       <div
-        v-for="t in FACILITY_ORDER"
+        v-for="t in FACILITY_POINT_ORDER"
         :key="t"
         :class="['card', { active: store.analysisType === t }]"
         @click="store.setAnalysisType(t)"

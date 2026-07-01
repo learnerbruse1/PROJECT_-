@@ -31,11 +31,12 @@ export const store = reactive({
   analysisType: 'school',
   // 每类设施各自的服务半径覆盖值（null = 用该类型默认半径），保证「设施类型 ↔ 服务半径」一一对应
   bufferRadius: { school: null, hospital: null, park: null },
-  popThreshold: 1000,
+  popThreshold: 3000,
 
   // —— 交互结果 ——
   selected: null, // { title, type, rows:[{k,v}] }
   stats: {}, // { school:{...}, hospital:{...}, park:{...} }
+  totalStats: null, // 全类型合并统计
   blindCount: 0, // 最近一次盲区分析识别出的盲区数量
 
   // —— 状态 ——
@@ -44,11 +45,34 @@ export const store = reactive({
 
   // ———————————————————— actions ————————————————————
   radiusOf(type) {
+    if (type === 'all') return null
     return this.bufferRadius[type] || FACILITY_TYPES[type].radius
   },
 
   effectiveRadius() {
     return this.radiusOf(this.analysisType)
+  },
+
+  radiiByType() {
+    return {
+      school: this.radiusOf('school'),
+      hospital: this.radiusOf('hospital'),
+      park: this.radiusOf('park'),
+    }
+  },
+
+  setBufferRadius(type, radius) {
+    if (type in this.bufferRadius) this.bufferRadius[type] = radius
+  },
+
+  resetBufferRadius(type) {
+    if (type in this.bufferRadius) this.bufferRadius[type] = null
+  },
+
+  resetAllBufferRadii() {
+    this.bufferRadius.school = null
+    this.bufferRadius.hospital = null
+    this.bufferRadius.park = null
   },
 
   setView(bbox, zoom) {
@@ -115,6 +139,16 @@ export const store = reactive({
       this.setError('供需统计加载失败：' + e.message)
     } finally {
       this.loading.stats = false
+    }
+  },
+  // 全类型供需统计
+  async loadTotalStats() {
+    try {
+      const bbox = HONGSHAN_BBOX.join(',')
+      const d = await api.supplyDemandAll(bbox, this.radiiByType())
+      this.totalStats = d
+    } catch (e) {
+      /* 静默失败 */
     }
   },
 })

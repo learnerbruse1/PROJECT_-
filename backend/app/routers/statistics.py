@@ -5,10 +5,13 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.db.provider import (
     query_blind_spots,
+    query_blind_spots_all,
     query_coverage,
+    query_coverage_all,
     query_facilities,
     query_heatmap,
     query_supply_demand,
+    query_supply_demand_all,
 )
 
 router = APIRouter()
@@ -30,6 +33,18 @@ def _parse_bbox(bbox: str) -> list[float]:
 def _check_type(fac_type: str):
     if fac_type not in VALID_TYPES:
         raise HTTPException(400, f"facility_type 只允许：{VALID_TYPES}")
+
+
+def _resolve_all_radii(
+    school_radius: Optional[int],
+    hospital_radius: Optional[int],
+    park_radius: Optional[int],
+) -> dict[str, int]:
+    return {
+        "school": school_radius or DEFAULT_RADIUS["school"],
+        "hospital": hospital_radius or DEFAULT_RADIUS["hospital"],
+        "park": park_radius or DEFAULT_RADIUS["park"],
+    }
 
 
 # ── ① 人口热力 ────────────────────────────────────────────────────────────────
@@ -141,4 +156,69 @@ async def coverage(
     return {
         "code": 200,
         "data": {"facility_type": facility_type, "buffer_radius": radius, "coverage_geojson": geojson},
+    }
+
+
+# ── ⑥ 全类型覆盖区叠加 ─────────────────────────────────────────────────────────
+
+@router.get("/analysis/coverage-all", summary="全设施类型覆盖区叠加")
+async def coverage_all(
+    bbox: str = Query(...),
+    school_radius: Optional[int] = Query(None, ge=1),
+    hospital_radius: Optional[int] = Query(None, ge=1),
+    park_radius: Optional[int] = Query(None, ge=1),
+):
+    bbox_coords = _parse_bbox(bbox)
+    radii = _resolve_all_radii(school_radius, hospital_radius, park_radius)
+    fc = await query_coverage_all(bbox_coords, radii)
+    return {"code": 200, "data": {"radii": radii, "coverage_geojson": fc}}
+
+
+# ── ⑦ 全类型盲区识别 ────────────────────────────────────────────────────────────
+
+@router.get("/analysis/blind-spots-all", summary="全设施类型供给盲区识别")
+async def blind_spots_all(
+    bbox: str = Query(...),
+    pop_threshold: float = Query(3000.0, description="人口密度阈值（人/km²）"),
+    school_radius: Optional[int] = Query(None, ge=1),
+    hospital_radius: Optional[int] = Query(None, ge=1),
+    park_radius: Optional[int] = Query(None, ge=1),
+):
+    bbox_coords = _parse_bbox(bbox)
+    radii = _resolve_all_radii(school_radius, hospital_radius, park_radius)
+    features = await query_blind_spots_all(bbox_coords, radii, pop_threshold)
+    return {
+        "code": 200,
+        "data": {
+            "radii": radii,
+            "pop_threshold": pop_threshold,
+            "blind_spot_count": len(features),
+            "blind_spots": {"type": "FeatureCollection", "features": features},
+        },
+    }
+
+
+# ── ⑧ 全类型供需统计 ────────────────────────────────────────────────────────────
+
+@router.get("/analysis/supply-demand-all", summary="全设施类型供需统计")
+async def supply_demand_all(
+    bbox: str = Query(...),
+    school_radius: Optional[int] = Query(None, ge=1),
+    hospital_radius: Optional[int] = Query(None, ge=1),
+    park_radius: Optional[int] = Query(None, ge=1),
+):
+    bbox_coords = _parse_bbox(bbox)
+    radii = _resolve_all_radii(school_radius, hospital_radius, park_radius)
+    row = await query_supply_demand_all(bbox_coords, radii)
+    total = row.get("total", 0) or 1
+    covered = row.get("covered", 0)
+    return {
+        "code": 200,
+        "data": {
+            "radii": radii,
+            "total_population": row.get("total", 0),
+            "covered_population": covered,
+            "coverage_rate": round(covered / total, 3),
+            "facility_count": row.get("facility_count", 0),
+        },
     }

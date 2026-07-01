@@ -7,12 +7,14 @@ export const DEFAULT_ZOOM = 12
 
 // 三大类公共设施的展示元数据（颜色、中文名、默认服务半径、图例符号）
 export const FACILITY_TYPES = {
+  all: { label: '全部', color: '#8b5cf6', radius: null, emoji: '📊' },
   school: { label: '学校', color: '#2563eb', radius: 1000, emoji: '🏫' },
   hospital: { label: '医院', color: '#dc2626', radius: 2000, emoji: '🏥' },
   park: { label: '公园', color: '#16a34a', radius: 500, emoji: '🌳' },
 }
 
-export const FACILITY_ORDER = ['school', 'hospital', 'park']
+export const FACILITY_POINT_ORDER = ['school', 'hospital', 'park']
+export const ANALYSIS_TYPE_ORDER = ['school', 'hospital', 'park', 'all']
 
 // OSM 细分类型 → 中文标签（用于点选弹窗展示原始类别）
 export const SUBTYPE_LABELS = {
@@ -23,10 +25,11 @@ export const SUBTYPE_LABELS = {
 
 // 人口密度热力的分级配色（由低到高），用于图例与渐变
 export const HEAT_GRADIENT = {
-  0.2: '#2b83ba',
-  0.4: '#abdda4',
-  0.6: '#ffffbf',
-  0.8: '#fdae61',
+  0.1: '#2b83ba',
+  0.3: '#abdda4',
+  0.55: '#ffffbf',
+  0.75: '#fdae61',
+  0.9: '#f46d43',
   1.0: '#d7191c',
 }
 
@@ -47,13 +50,19 @@ export function bboxStringFromMap(map) {
 }
 
 // 将后端人口点 {lng,lat,value} 列表转为 leaflet.heat 的 [lat,lng,intensity]
-// intensity 以批次内最大值归一化并做平方根压缩，避免少数极值淹没整体梯度
+// 使用洪山区人口密度分位阈值近似映射：p50≈400、p75≈1900、p90≈5700、p95≈12000、p99≈24500。
+function heatIntensity(value) {
+  if (value <= 400) return 0.10
+  if (value <= 1900) return 0.28
+  if (value <= 5300) return 0.48
+  if (value <= 11000) return 0.68
+  if (value <= 24500) return 0.90
+  return 1
+}
+
 export function toHeatPoints(points) {
   if (!points.length) return []
-  let maxV = 0
-  for (const p of points) if (p.value > maxV) maxV = p.value
-  const ref = maxV || 1
-  return points.map((p) => [p.lat, p.lng, Math.min(1, Math.sqrt(p.value / ref))])
+  return points.map((p) => [p.lat, p.lng, heatIntensity(Math.max(p.value, 0))])
 }
 
 // 千分位格式化
