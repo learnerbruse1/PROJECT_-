@@ -1,8 +1,8 @@
 // 公共地理工具：设施类型元数据、颜色分级、坐标与范围换算
 
-// 研究区：武汉市洪山区
-export const HONGSHAN_CENTER = [30.504259, 114.400718] // [lat, lng]，Leaflet 顺序
-export const HONGSHAN_BBOX = [114.17, 30.38, 114.65, 30.70] // [minLng,minLat,maxLng,maxLat]
+// 研究区：武汉市洪山区（均为 WGS84 / EPSG:4326，与边界、人口、设施数据同一坐标系）
+export const HONGSHAN_CENTER = [30.506565, 114.395178] // [lat, lng]，Leaflet 顺序
+export const HONGSHAN_BBOX = [114.16, 30.38, 114.65, 30.70] // [minLng,minLat,maxLng,maxLat]，含边距覆盖全区
 export const DEFAULT_ZOOM = 12
 
 // 三大类公共设施的展示元数据（颜色、中文名、默认服务半径、图例符号）

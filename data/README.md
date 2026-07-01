@@ -48,4 +48,4 @@ python scripts/栅格重采样.py
 
 - 人口：WorldPop 2020（CC BY 4.0）。
 - 设施：OpenStreetMap（ODbL）。
-- 边界：公开行政区划数据。
+- 边界：公开行政区划数据（高德 / 阿里云 DataV，原为 GCJ-02）。已用 `scripts/边界坐标校正.py` 反解为 WGS84，与人口、设施、天地图/OSM 底图对齐；每个要素带 `coord_system: "WGS84"` 标记（脚本据此幂等）。
