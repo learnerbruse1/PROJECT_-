@@ -16,16 +16,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* 浮动面板通用样式 */
-.panel {
-  background: rgba(255, 255, 255, 0.97);
-  border-radius: 12px;
-  padding: 14px 16px;
-  box-shadow: 0 2px 14px rgba(15, 23, 42, 0.12);
-  backdrop-filter: blur(2px);
-}
-
-/* Leaflet 容器层级要低于浮动面板 */
+/* Leaflet 容器 */
 .leaflet-container {
   background: #dfe7ef;
   font: inherit;
@@ -33,13 +24,4 @@ body {
 .leaflet-top,
 .leaflet-bottom {
   z-index: 800;
-}
-
-/* 自定义滚动条（右侧面板较长时） */
-.dock.right::-webkit-scrollbar {
-  width: 6px;
-}
-.dock.right::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.5);
-  border-radius: 3px;
 }

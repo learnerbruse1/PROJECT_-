@@ -1,27 +1,53 @@
 <script setup>
-import { onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { store } from '../stores/mapStore.js'
 import { FACILITY_TYPES, FACILITY_POINT_ORDER, fmt, pct } from '../utils/geoUtils.js'
+
+const collapsed = ref(false)  // 默认展开
 
 let timer = null
 function scheduleReload() {
   clearTimeout(timer)
   timer = setTimeout(() => {
     store.loadStats()
+    if (store.analysisType === 'all') store.loadTotalStats()
   }, 500)
 }
 
 onMounted(() => {
   if (store.ready) {
     store.loadStats()
+    if (store.analysisType === 'all') store.loadTotalStats()
   }
 })
 
-// 供需统计固定按全区计算，不随地图视野变化；仅在服务半径或数据就绪状态变化时刷新
 watch(
   () => [store.bufferRadius.school, store.bufferRadius.hospital, store.bufferRadius.park, store.ready],
   scheduleReload,
 )
+
+watch(
+  () => store.analysisType,
+  (t) => {
+    if (t === 'all') store.loadTotalStats()
+  },
+)
+
+// 当前展示的统计数据
+const stat = computed(() => {
+  if (store.analysisType === 'all') return store.totalStats
+  return store.stats[store.analysisType]
+})
+
+const label = computed(() => {
+  if (store.analysisType === 'all') return '全部设施合并'
+  return FACILITY_TYPES[store.analysisType]?.label || ''
+})
+
+const color = computed(() => {
+  if (store.analysisType === 'all') return FACILITY_TYPES.all.color
+  return FACILITY_TYPES[store.analysisType]?.color || '#6b7280'
+})
 
 function rateColor(rate) {
   if (rate == null) return '#9ca3af'
@@ -32,160 +58,123 @@ function rateColor(rate) {
 </script>
 
 <template>
-  <div class="panel stats-panel">
-    <div class="hd">
-      <h3>供需统计（洪山区全域）</h3>
-      <button class="refresh" :disabled="store.loading.stats" @click="store.loadStats()">
-        {{ store.loading.stats ? '统计中…' : '刷新' }}
-      </button>
+  <div class="stats-bar">
+    <div class="stats-header" @click="collapsed = !collapsed">
+      <span class="stats-dot" :style="{ background: color }" />
+      <span class="stats-label">{{ label }}</span>
+      <span class="stats-rate" :style="{ color: stat ? rateColor(stat.coverage_rate) : '#9ca3af' }">
+        {{ stat ? pct(stat.coverage_rate) : '—' }}
+      </span>
+      <span class="stats-toggle">{{ collapsed ? '▸' : '▾' }}</span>
     </div>
 
-    <div class="cards">
-      <div
-        v-for="t in FACILITY_POINT_ORDER"
-        :key="t"
-        :class="['card', { active: store.analysisType === t }]"
-        @click="store.setAnalysisType(t)"
-      >
-        <div class="card-hd">
-          <span class="dot" :style="{ background: FACILITY_TYPES[t].color }" />
-          <span class="name">{{ FACILITY_TYPES[t].label }}</span>
-          <span class="count">{{ fmt(store.stats[t]?.facility_count) }} 处</span>
+    <div v-if="!collapsed && stat" class="stats-body">
+      <div class="bar">
+        <div
+          class="bar-fill"
+          :style="{
+            width: Math.max(2, (stat.coverage_rate * 100).toFixed(1)) + '%',
+            background: rateColor(stat.coverage_rate),
+          }"
+        />
+      </div>
+      <div class="meta-row">
+        <div class="meta-item">
+          <span class="meta-val">{{ fmt(stat.covered_population) }}</span>
+          <span class="meta-lbl">覆盖格网</span>
         </div>
-
-        <template v-if="store.stats[t]">
-          <div class="rate" :style="{ color: rateColor(store.stats[t].coverage_rate) }">
-            {{ pct(store.stats[t].coverage_rate) }}
-          </div>
-          <div class="bar">
-            <div
-              class="bar-fill"
-              :style="{
-                width: (store.stats[t].coverage_rate * 100).toFixed(1) + '%',
-                background: rateColor(store.stats[t].coverage_rate),
-              }"
-            />
-          </div>
-          <div class="meta">
-            <span>覆盖 {{ fmt(store.stats[t].covered_population) }}</span>
-            <span>/ 共 {{ fmt(store.stats[t].total_population) }} 格</span>
-          </div>
-          <div class="meta">
-            <span>千人设施量</span>
-            <span class="strong">{{ store.stats[t].per_capita?.toFixed(3) ?? '—' }}</span>
-          </div>
-          <div class="meta sub">服务半径 {{ store.stats[t].buffer_radius }} m</div>
-        </template>
-        <div v-else class="empty">{{ store.loading.stats ? '加载中…' : '暂无数据' }}</div>
+        <div class="meta-item">
+          <span class="meta-val">{{ fmt(stat.total_population) }}</span>
+          <span class="meta-lbl">总格网</span>
+        </div>
+        <div v-if="store.analysisType !== 'all'" class="meta-item">
+          <span class="meta-val">{{ stat.facility_count ?? '—' }}</span>
+          <span class="meta-lbl">设施数</span>
+        </div>
       </div>
     </div>
-    <p class="foot">覆盖率 = 服务区覆盖的人口格网 / 全区总格网；按全区固定计算，不随地图缩放变化。点击卡片可切换分析类型。</p>
+    <div v-else-if="!collapsed && !stat" class="stats-body empty">
+      加载中…
+    </div>
   </div>
 </template>
 
 <style scoped>
-.stats-panel {
-  width: 270px;
+.stats-bar {
+  border-top: 2px solid #e5e7eb;
+  background: #fafbfc;
 }
-.hd {
+.stats-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-h3 {
-  margin: 0;
-  font-size: 13px;
-  color: #111827;
-}
-.refresh {
-  border: 1px solid #e5e7eb;
-  background: #f9fafb;
-  border-radius: 6px;
-  font-size: 12px;
-  padding: 3px 10px;
+  gap: 10px;
+  padding: 11px 14px;
   cursor: pointer;
-  color: #374151;
+  user-select: none;
 }
-.cards {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.stats-header:hover {
+  background: #f3f4f6;
 }
-.card {
-  border: 1px solid #eef0f3;
-  border-radius: 9px;
-  padding: 10px 12px;
-  cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.card.active {
-  border-color: #c7d2fe;
-  box-shadow: 0 0 0 2px #eef2ff;
-}
-.card-hd {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 13px;
-}
-.dot {
-  width: 10px;
-  height: 10px;
+.stats-dot {
+  width: 12px; height: 12px;
   border-radius: 50%;
+  flex: none;
 }
-.name {
-  font-weight: 600;
+.stats-label {
+  font-size: 13px;
   color: #111827;
+  font-weight: 700;
 }
-.count {
+.stats-rate {
   margin-left: auto;
-  color: #6b7280;
-  font-size: 12px;
-}
-.rate {
-  font-size: 26px;
+  font-size: 22px;
   font-weight: 800;
-  line-height: 1.2;
-  margin-top: 4px;
+}
+.stats-toggle {
+  font-size: 12px;
+  color: #9ca3af;
+  width: 16px;
+  text-align: center;
+}
+.stats-body {
+  padding: 0 14px 12px;
 }
 .bar {
-  height: 6px;
-  background: #f1f5f9;
+  height: 8px;
+  background: #e5e7eb;
   border-radius: 4px;
   overflow: hidden;
-  margin: 4px 0 8px;
+  margin-bottom: 10px;
 }
 .bar-fill {
   height: 100%;
   border-radius: 4px;
   transition: width 0.3s;
 }
-.meta {
+.meta-row {
   display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: #6b7280;
-  margin-top: 2px;
+  gap: 14px;
+  justify-content: center;
 }
-.meta .strong {
+.meta-item {
+  text-align: center;
+}
+.meta-val {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
   color: #111827;
-  font-weight: 600;
 }
-.meta.sub {
+.meta-lbl {
+  display: block;
+  font-size: 10px;
   color: #9ca3af;
-  font-size: 11px;
-  margin-top: 4px;
+  margin-top: 1px;
 }
 .empty {
-  color: #9ca3af;
   font-size: 12px;
-  padding: 8px 0;
-}
-.foot {
-  margin: 10px 0 0;
-  font-size: 11px;
   color: #9ca3af;
-  line-height: 1.5;
+  text-align: center;
+  padding-bottom: 10px;
 }
 </style>

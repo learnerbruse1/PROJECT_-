@@ -27,16 +27,13 @@ function buildBaseLayers() {
     layers['天地图·矢量'] = L.layerGroup([tdt('vec'), tdt('cva')])
     layers['天地图·影像'] = L.layerGroup([tdt('img'), tdt('cia')])
   }
-  // OSM 与天地图 _w 均可直接承载本项目的 WGS84 GeoJSON 专题图层，作为默认回退。
-  layers['OpenStreetMap'] = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '© OpenStreetMap',
-  })
-  // 高德底图使用 GCJ-02 坐标，在国内会与 WGS84 专题图层产生偏移，因此仅作为可选备用。
-  layers['高德·矢量（GCJ-02，可能偏移）'] = L.tileLayer(
-    'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
-    { subdomains: ['1', '2', '3', '4'], maxZoom: 18, attribution: '© 高德地图' },
-  )
+  // 无天地图密钥时用 OSM 作为唯一回退
+  if (!KEY) {
+    layers['OpenStreetMap'] = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap',
+    })
+  }
   return layers
 }
 
@@ -55,12 +52,8 @@ onMounted(() => {
   const bases = buildBaseLayers()
   const first = Object.values(bases)[0]
   first.addTo(map)
-  L.control.layers(bases, {}, { position: 'topright', collapsed: true }).addTo(map)
-  map.on('baselayerchange', (e) => {
-    if (e.name?.includes('高德')) {
-      store.setError('高德底图使用 GCJ-02 坐标，可能与行政区、盲区、服务区等 WGS84 图层存在偏移。')
-    }
-  })
+  const layerCtrl = L.control.layers(bases, {}, { position: 'topright', collapsed: false })
+  if (Object.keys(bases).length > 1) layerCtrl.addTo(map)
   L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map)
 
   // 研究区边界轮廓 + 自动定位（F1）
@@ -108,9 +101,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .map-root {
-  position: absolute;
-  inset: 0;
   width: 100%;
   height: 100%;
+  cursor: crosshair;
 }
 </style>
