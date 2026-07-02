@@ -19,7 +19,7 @@
 | `学校医院.geojson` | 学校 + 医疗设施点（OSM） | 设施图层（归并为 school/hospital） |
 | `公园绿地.geojson` | 公园绿地点（OSM，type=park） | 设施图层（park） |
 | `洪山区_边界.geojson` | 研究区边界（MultiPolygon） | `/meta/boundary`，前端定位与轮廓 |
-| `洪山区.geojson` / `洪山区_区划.geojson` | 边界的其它版本 | 备用，系统未直接使用 |
+| `洪山区.geojson`、`洪山区_区划.geojson` | 📦 边界的其它版本（备用，系统未直接使用） |
 
 > 后端默认从 `data/processed/` 读取（可用环境变量 `DATA_DIR` 覆盖）。
 

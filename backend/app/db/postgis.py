@@ -46,6 +46,35 @@ async def query_heatmap(bbox: list[float], dataset: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+# ── 人口密度点查询 ────────────────────────────────────────────────────────────
+
+async def query_population_at_point(lng: float, lat: float) -> Optional[dict]:
+    """查询距离指定坐标最近人口网格点的密度值；超出约一个网格（150m）视为无数据。"""
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT ST_X(geom) AS cell_lng, ST_Y(geom) AS cell_lat, value,
+               ST_Distance(
+                   geom::geography,
+                   ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
+               ) AS dist_m
+        FROM   population_grid
+        ORDER  BY geom <-> ST_SetSRID(ST_MakePoint($1, $2), 4326)
+        LIMIT  1
+        """,
+        lng, lat,
+    )
+    if not row or row["dist_m"] is None or row["dist_m"] > 150:
+        return None
+    return {
+        "lng": round(lng, 5),
+        "lat": round(lat, 5),
+        "pop_density": round(float(row["value"]), 1),
+        "cell_lng": round(float(row["cell_lng"]), 5),
+        "cell_lat": round(float(row["cell_lat"]), 5),
+    }
+
+
 # ── 公共设施 ──────────────────────────────────────────────────────────────────
 
 async def query_facilities(

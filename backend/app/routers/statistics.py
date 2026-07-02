@@ -10,6 +10,7 @@ from app.db.provider import (
     query_coverage_all,
     query_facilities,
     query_heatmap,
+    query_population_at_point,
     query_supply_demand,
     query_supply_demand_all,
 )
@@ -66,6 +67,22 @@ async def population_heatmap(
             "points": points,
         },
     }
+
+
+# ── 人口密度点查询（F12）───────────────────────────────────────────────────────
+
+@router.get("/population/at-point", summary="查询指定坐标的人口密度")
+async def population_at_point(
+    lng: float = Query(..., ge=113.5, le=115.1, description="经度"),
+    lat: float = Query(..., ge=29.9, le=31.4, description="纬度"),
+):
+    result = await query_population_at_point(lng, lat)
+    if result is None:
+        return {
+            "code": 200,
+            "data": {"lng": lng, "lat": lat, "pop_density": 0, "note": "该点不在人口栅格覆盖范围内"},
+        }
+    return {"code": 200, "data": result}
 
 
 # ── ② 公共设施列表 ────────────────────────────────────────────────────────────

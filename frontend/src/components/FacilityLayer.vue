@@ -29,6 +29,7 @@ function makeMarker(f) {
     weight: 1.5,
     fillColor: meta.color,
     fillOpacity: 0.9,
+    bubblingMouseEvents: false, // 点击设施不冒泡到地图，避免同时触发人口点查询
   })
   marker.on('click', () => {
     store.select({

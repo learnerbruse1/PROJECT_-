@@ -33,11 +33,13 @@ function resetAllRadii() { store.resetAllBufferRadii() }
     <!-- Tab: 图层控制 -->
     <template v-if="props.mode === 'layers'">
       <section>
-        <h3>图层显示</h3>
         <label v-for="it in layerItems" :key="it.key" class="layer-row">
-          <input type="checkbox" :checked="store.layers[it.key]" @change="store.toggle(it.key)" />
-          <span v-if="it.hasDot" class="dot" :style="{ background: it.dot }" />
+          <span class="dot" :style="{ background: it.dot }" />
           <span class="layer-label">{{ it.label }}</span>
+          <span class="switch">
+            <input type="checkbox" :checked="store.layers[it.key]" @change="store.toggle(it.key)" />
+            <span class="slider" />
+          </span>
         </label>
       </section>
     </template>
@@ -118,9 +120,13 @@ function resetAllRadii() { store.resetAllBufferRadii() }
   border-top: 1px solid #eef0f3;
 }
 h3 {
-  margin: 0 0 8px;
+  margin: 0 0 9px;
   font-size: 13px;
-  color: #111827;
+  color: var(--c-text);
+  font-weight: 700;
+  padding-left: 9px;
+  border-left: 3px solid var(--c-primary);
+  line-height: 1.15;
 }
 .hint {
   margin: 0 0 8px;
@@ -131,11 +137,55 @@ h3 {
 .layer-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 0;
+  gap: 9px;
+  padding: 7px 8px;
+  margin: 0 -8px;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
-  color: #374151;
+  color: #334155;
+  transition: background 0.12s;
+}
+.layer-row:hover {
+  background: #f1f5f9;
+}
+/* iOS 风格开关 */
+.switch {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  flex: none;
+}
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.slider {
+  position: absolute;
+  inset: 0;
+  background: #cbd5e1;
+  border-radius: 999px;
+  transition: background 0.2s;
+}
+.slider::before {
+  content: '';
+  position: absolute;
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  top: 2px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.35);
+  transition: transform 0.2s;
+}
+.switch input:checked + .slider {
+  background: var(--c-primary);
+}
+.switch input:checked + .slider::before {
+  transform: translateX(14px);
 }
 .dot {
   width: 10px; height: 10px;

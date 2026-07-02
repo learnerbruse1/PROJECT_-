@@ -19,6 +19,7 @@ if _BACKEND == "postgis":
         query_coverage_all,
         query_facilities,
         query_heatmap,
+        query_population_at_point,
         query_supply_demand,
         query_supply_demand_all,
     )
@@ -31,6 +32,7 @@ else:
         query_coverage_all,
         query_facilities,
         query_heatmap,
+        query_population_at_point,
         query_supply_demand,
         query_supply_demand_all,
     )
@@ -52,6 +54,7 @@ __all__ = [
     "query_coverage_all",
     "query_facilities",
     "query_heatmap",
+    "query_population_at_point",
     "query_supply_demand",
     "query_supply_demand_all",
 ]

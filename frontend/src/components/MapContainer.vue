@@ -2,7 +2,8 @@
 import { ref, onMounted, onBeforeUnmount, provide, watch } from 'vue'
 import L from 'leaflet'
 import { store } from '../stores/mapStore.js'
-import { bboxStringFromMap, HONGSHAN_BBOX } from '../utils/geoUtils.js'
+import { bboxStringFromMap, HONGSHAN_BBOX, fmt } from '../utils/geoUtils.js'
+import { api } from '../api.js'
 
 const el = ref(null)
 const mapRef = ref(null)
@@ -10,6 +11,7 @@ provide('map', mapRef) // 子图层组件通过 inject('map') 获取地图实例
 
 let map = null
 let moveTimer = null
+let queryMarker = null // F12 人口密度查询的落点标记
 
 const KEY = import.meta.env.VITE_TIANDITU_KEY
 
@@ -41,6 +43,49 @@ function syncView() {
   store.setView(bboxStringFromMap(map), map.getZoom())
 }
 
+// F12 人口密度查询落点标记（脉冲圆点，仅作视觉提示，不可交互）
+const QUERY_PIN = L.divIcon({
+  className: 'pop-query-pin',
+  html: '<span class="ring"></span><span class="dot"></span>',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
+})
+function clearQueryMarker() {
+  if (queryMarker && map) map.removeLayer(queryMarker)
+  queryMarker = null
+}
+
+// F12 点击地图空白处查询该点人口密度。
+// 设施点与盲区面已设 bubblingMouseEvents:false，点击它们不会冒泡到此处，
+// 因此这里只响应对底图空白区域的点击，并把结果交给侧边 InfoPanel 展示。
+async function queryPopulationAt(latlng) {
+  const { lat, lng } = latlng
+  clearQueryMarker()
+  queryMarker = L.marker([lat, lng], { icon: QUERY_PIN, interactive: false, keyboard: false }).addTo(map)
+  try {
+    const data = await api.populationAtPoint(lng, lat)
+    const density = data?.pop_density || 0
+    store.select({
+      title: '人口密度查询',
+      kind: 'population',
+      density,
+      rows: density
+        ? [
+            { k: '人口密度', v: fmt(density) + ' 人/km²' },
+            { k: '网格中心', v: `${data.cell_lat.toFixed(4)}, ${data.cell_lng.toFixed(4)}` },
+            { k: '点击坐标', v: `${lat.toFixed(5)}, ${lng.toFixed(5)}` },
+          ]
+        : [
+            { k: '查询结果', v: data?.note || '该位置无人口栅格数据' },
+            { k: '点击坐标', v: `${lat.toFixed(5)}, ${lng.toFixed(5)}` },
+          ],
+    })
+  } catch (err) {
+    clearQueryMarker()
+    store.setError('人口密度查询失败：' + err.message)
+  }
+}
+
 onMounted(() => {
   map = L.map(el.value, { zoomControl: true })
   // 初始视野同步定位到洪山区范围（animate:false），避免边界异步到达后再次 fitBounds 触发二次加载
@@ -52,9 +97,12 @@ onMounted(() => {
   const bases = buildBaseLayers()
   const first = Object.values(bases)[0]
   first.addTo(map)
-  const layerCtrl = L.control.layers(bases, {}, { position: 'topright', collapsed: false })
+  const layerCtrl = L.control.layers(bases, {}, { position: 'bottomright', collapsed: false })
   if (Object.keys(bases).length > 1) layerCtrl.addTo(map)
   L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map)
+
+  // F12 点击地图查询人口密度
+  map.on('click', (e) => queryPopulationAt(e.latlng))
 
   // 研究区边界轮廓 + 自动定位（F1）
   if (store.boundary) drawBoundary()
@@ -86,8 +134,17 @@ watch(
   },
 )
 
+// 关闭详情面板或改选其他要素时，移除人口查询落点标记
+watch(
+  () => store.selected,
+  (sel) => {
+    if (!sel || sel.kind !== 'population') clearQueryMarker()
+  },
+)
+
 onBeforeUnmount(() => {
   clearTimeout(moveTimer)
+  clearQueryMarker()
   if (map) map.remove()
 })
 </script>

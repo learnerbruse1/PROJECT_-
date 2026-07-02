@@ -40,6 +40,9 @@ export const api = {
   // F2 人口热力点
   heatmap: (bbox, zoom, dataset = 'worldpop') =>
     get('/population/heatmap', { bbox, zoom, dataset }),
+  // F12 点击地图查询该点人口密度
+  populationAtPoint: (lng, lat) =>
+    get('/population/at-point', { lng: lng.toFixed(5), lat: lat.toFixed(5) }),
   // F3/F4 设施列表（不传 facility_type 返回全部）
   facilities: (bbox, facility_type, page = 1, page_size = 2000) =>
     get('/facilities', { bbox, ...(facility_type ? { facility_type } : {}), page, page_size }),

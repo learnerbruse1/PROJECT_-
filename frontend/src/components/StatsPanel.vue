@@ -1,9 +1,7 @@
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue'
+import { onMounted, watch, computed } from 'vue'
 import { store } from '../stores/mapStore.js'
-import { FACILITY_TYPES, FACILITY_POINT_ORDER, fmt, pct } from '../utils/geoUtils.js'
-
-const collapsed = ref(false)  // 默认展开
+import { FACILITY_TYPES, fmt, pct } from '../utils/geoUtils.js'
 
 let timer = null
 function scheduleReload() {
@@ -58,17 +56,16 @@ function rateColor(rate) {
 </script>
 
 <template>
-  <div class="stats-bar">
-    <div class="stats-header" @click="collapsed = !collapsed">
+  <div class="stats">
+    <div class="summary">
       <span class="stats-dot" :style="{ background: color }" />
       <span class="stats-label">{{ label }}</span>
       <span class="stats-rate" :style="{ color: stat ? rateColor(stat.coverage_rate) : '#9ca3af' }">
         {{ stat ? pct(stat.coverage_rate) : '—' }}
       </span>
-      <span class="stats-toggle">{{ collapsed ? '▸' : '▾' }}</span>
     </div>
 
-    <div v-if="!collapsed && stat" class="stats-body">
+    <template v-if="stat">
       <div class="bar">
         <div
           class="bar-fill"
@@ -92,28 +89,17 @@ function rateColor(rate) {
           <span class="meta-lbl">设施数</span>
         </div>
       </div>
-    </div>
-    <div v-else-if="!collapsed && !stat" class="stats-body empty">
-      加载中…
-    </div>
+    </template>
+    <div v-else class="empty">加载中…</div>
   </div>
 </template>
 
 <style scoped>
-.stats-bar {
-  border-top: 2px solid #e5e7eb;
-  background: #fafbfc;
-}
-.stats-header {
+.summary {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 11px 14px;
-  cursor: pointer;
-  user-select: none;
-}
-.stats-header:hover {
-  background: #f3f4f6;
+  margin-bottom: 12px;
 }
 .stats-dot {
   width: 12px; height: 12px;
@@ -127,24 +113,16 @@ function rateColor(rate) {
 }
 .stats-rate {
   margin-left: auto;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 800;
-}
-.stats-toggle {
-  font-size: 12px;
-  color: #9ca3af;
-  width: 16px;
-  text-align: center;
-}
-.stats-body {
-  padding: 0 14px 12px;
+  letter-spacing: -0.5px;
 }
 .bar {
   height: 8px;
   background: #e5e7eb;
   border-radius: 4px;
   overflow: hidden;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .bar-fill {
   height: 100%;
@@ -153,11 +131,16 @@ function rateColor(rate) {
 }
 .meta-row {
   display: flex;
-  gap: 14px;
+  gap: 8px;
   justify-content: center;
 }
 .meta-item {
+  flex: 1;
   text-align: center;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  border-radius: 9px;
+  padding: 8px 4px;
 }
 .meta-val {
   display: block;
@@ -169,12 +152,12 @@ function rateColor(rate) {
   display: block;
   font-size: 10px;
   color: #9ca3af;
-  margin-top: 1px;
+  margin-top: 2px;
 }
 .empty {
   font-size: 12px;
   color: #9ca3af;
   text-align: center;
-  padding-bottom: 10px;
+  padding: 6px 0;
 }
 </style>

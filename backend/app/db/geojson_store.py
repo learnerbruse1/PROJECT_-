@@ -97,6 +97,7 @@ _loaded = False
 _pop_arr: np.ndarray = np.empty((0, 3), dtype=float)  # 列：lng, lat, value
 _facilities: list[dict] = []                          # {id,name,type,subtype,lng,lat,source}
 _boundary_geojson: Optional[dict] = None
+_grid_step_m: Optional[float] = None                  # 人口网格近似边长（米），惰性计算并缓存
 
 
 def _read_geojson(name: str) -> dict:
@@ -234,6 +235,56 @@ async def query_heatmap(bbox: list[float], dataset: str) -> list[dict]:
         {"lng": round(float(r[0]), 5), "lat": round(float(r[1]), 5), "value": round(float(r[2]), 1)}
         for r in sub
     ]
+
+
+# ── 人口密度点查询（F12）──────────────────────────────────────────────────────
+
+def _population_grid_step_m() -> float:
+    """估算人口网格的近似边长（米），供点查询判定点击是否落在栅格内。
+
+    人口点为规则网格的格心，取经/纬方向相邻格心的最小间距换算为米，取较大者作为格宽；
+    结果缓存于模块级 _grid_step_m，数据加载后不再变化。
+    """
+    global _grid_step_m
+    if _grid_step_m is not None:
+        return _grid_step_m
+    if _pop_arr.size == 0:
+        _grid_step_m = 0.0
+        return _grid_step_m
+
+    def _min_gap(vals: np.ndarray, m_per_deg: float) -> float:
+        uniq = np.unique(np.round(vals, 5))          # 归并浮点误差后取相邻唯一值间距
+        diffs = np.diff(uniq)
+        diffs = diffs[diffs > 1e-9]
+        return float(diffs.min()) * m_per_deg if diffs.size else 0.0
+
+    step = max(_min_gap(_pop_arr[:, 0], _M_PER_DEG_LNG), _min_gap(_pop_arr[:, 1], _M_PER_DEG_LAT))
+    _grid_step_m = step or 150.0                      # 兜底：数据异常时用约一个网格的经验值
+    return _grid_step_m
+
+
+async def query_population_at_point(lng: float, lat: float) -> Optional[dict]:
+    """查询距离指定坐标最近人口网格的密度值（人/km²）。
+
+    以向量化方式在局部米制坐标下取最近格心；若点击处距最近格心超过约一个网格
+    （判定为落在人口栅格覆盖范围外），返回 None，由路由层给出「无人口数据」提示。
+    """
+    _ensure_loaded()
+    if _pop_arr.size == 0:
+        return None
+    dx = (_pop_arr[:, 0] - lng) * _M_PER_DEG_LNG
+    dy = (_pop_arr[:, 1] - lat) * _M_PER_DEG_LAT
+    d2 = dx * dx + dy * dy
+    i = int(np.argmin(d2))
+    if math.sqrt(float(d2[i])) > _population_grid_step_m():
+        return None
+    return {
+        "lng": round(lng, 5),
+        "lat": round(lat, 5),
+        "pop_density": round(float(_pop_arr[i, 2]), 1),
+        "cell_lng": round(float(_pop_arr[i, 0]), 5),
+        "cell_lat": round(float(_pop_arr[i, 1]), 5),
+    }
 
 
 # ── ② 公共设施 ────────────────────────────────────────────────────────────────

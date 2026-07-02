@@ -36,6 +36,7 @@ async function refresh() {
       store.blindCount = data.blind_spot_count
       layer = L.geoJSON(fc, {
         style: { color: '#b91c1c', weight: 1, fillColor: '#ef4444', fillOpacity: 0.35, stroke: false },
+        bubblingMouseEvents: false, // 点击盲区不冒泡到地图，避免同时触发人口点查询
         onEachFeature: (feature, lyr) => {
           const p = feature.properties || {}
           lyr.on('click', () => {
@@ -61,6 +62,7 @@ async function refresh() {
       store.blindCount = data.blind_spot_count
       layer = L.geoJSON(fc, {
         style: { color: '#b91c1c', weight: 1, fillColor: '#ef4444', fillOpacity: 0.35, stroke: false },
+        bubblingMouseEvents: false, // 点击盲区不冒泡到地图，避免同时触发人口点查询
         onEachFeature: (feature, lyr) => {
           const p = feature.properties || {}
           lyr.on('click', () => {

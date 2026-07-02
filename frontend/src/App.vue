@@ -9,6 +9,7 @@ import BlindZoneLayer from './components/BlindZoneLayer.vue'
 import LayerControl from './components/LayerControl.vue'
 import StatsPanel from './components/StatsPanel.vue'
 import Legend from './components/Legend.vue'
+import InfoPanel from './components/InfoPanel.vue'
 
 onMounted(() => store.init())
 
@@ -17,7 +18,11 @@ const busy = computed(() =>
 )
 const counts = computed(() => store.status?.counts || {})
 
-const activeTab = ref('layers')
+// 手风琴折叠：各分区可独立展开 / 收起
+const openSections = ref({ layers: true, analysis: false, stats: true })
+function toggleSection(key) {
+  openSections.value[key] = !openSections.value[key]
+}
 </script>
 
 <template>
@@ -25,13 +30,16 @@ const activeTab = ref('layers')
     <header class="topbar">
       <div class="brand">
         <span class="logo">🗺️</span>
-        <h1>洪山区人口分布热力与公共设施叠加分析系统</h1>
+        <div class="brand-text">
+          <h1>洪山区人口分布热力与公共设施叠加分析系统</h1>
+          <span class="subtitle">人口密度 · 设施覆盖 · 供给盲区识别</span>
+        </div>
       </div>
       <div class="status">
         <span v-if="busy" class="busy">● 加载中…</span>
         <span v-if="store.ready === null" class="badge gray">数据检测中…</span>
         <span v-else-if="store.ready" class="badge green">
-          数据就绪 · 设施 {{ counts.facilities }} · 人口格 {{ counts.population_points }}
+          <span class="badge-dot" />数据就绪 · 设施 {{ counts.facilities }} · 人口格 {{ counts.population_points }}
         </span>
         <span v-else class="badge red">数据未就绪</span>
       </div>
@@ -56,21 +64,44 @@ const activeTab = ref('layers')
     <!-- 主舞台 -->
     <main v-else class="stage">
       <aside class="sidebar">
-        <!-- Tab 切换 -->
-        <div class="tabs">
-          <button :class="['tab', { active: activeTab === 'layers' }]" @click="activeTab = 'layers'">👁 图层</button>
-          <button :class="['tab', { active: activeTab === 'analysis' }]" @click="activeTab = 'analysis'">📊 分析</button>
-        </div>
-        <div class="tab-content">
-          <LayerControl v-show="activeTab === 'layers'" mode="layers" />
-          <LayerControl v-show="activeTab === 'analysis'" mode="analysis" />
-        </div>
+        <!-- 手风琴：图层 / 分析 / 统计，纵向堆叠，可逐块折叠 -->
+        <div class="accordion">
+          <section class="acc-item" :class="{ open: openSections.layers }">
+            <button class="acc-head" @click="toggleSection('layers')">
+              <span class="acc-icon">👁</span>
+              <span class="acc-title">图层控制</span>
+              <span class="acc-chev">▾</span>
+            </button>
+            <div v-show="openSections.layers" class="acc-body">
+              <LayerControl mode="layers" />
+            </div>
+          </section>
 
-        <!-- 供需统计：底部折叠，始终可见 -->
-        <StatsPanel />
+          <section class="acc-item" :class="{ open: openSections.analysis }">
+            <button class="acc-head" @click="toggleSection('analysis')">
+              <span class="acc-icon">📊</span>
+              <span class="acc-title">分析配置</span>
+              <span class="acc-chev">▾</span>
+            </button>
+            <div v-show="openSections.analysis" class="acc-body">
+              <LayerControl mode="analysis" />
+            </div>
+          </section>
+
+          <section class="acc-item" :class="{ open: openSections.stats }">
+            <button class="acc-head" @click="toggleSection('stats')">
+              <span class="acc-icon">📈</span>
+              <span class="acc-title">供需统计</span>
+              <span class="acc-chev">▾</span>
+            </button>
+            <div v-show="openSections.stats" class="acc-body">
+              <StatsPanel />
+            </div>
+          </section>
+        </div>
 
         <!-- 人口查询提示 -->
-        <div class="hint-bar">🖱 点击地图任意位置查询人口密度</div>
+        <div class="hint-bar"><span class="hint-icon">🖱</span> 点击地图任意位置查询人口密度</div>
       </aside>
 
       <div class="map-area">
@@ -80,6 +111,10 @@ const activeTab = ref('layers')
           <CoverageLayer />
           <BlindZoneLayer />
         </MapContainer>
+        <!-- 点选详情 / 数据说明（浮于地图右上） -->
+        <div class="map-info">
+          <InfoPanel />
+        </div>
         <div class="map-legend">
           <Legend />
         </div>
@@ -101,33 +136,73 @@ const activeTab = ref('layers')
 }
 /* ── 顶栏 ── */
 .topbar {
-  height: 42px;
+  height: 52px;
   flex: none;
-  background: #0f172a;
+  background: linear-gradient(100deg, #0b1220 0%, #172033 55%, #1e293b 100%);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
+  padding: 0 18px;
   z-index: 1200;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.28);
+  border-bottom: 2px solid var(--c-primary);
 }
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 11px;
+  min-width: 0;
 }
-.logo { font-size: 20px; }
-h1 { margin: 0; font-size: 14px; font-weight: 700; white-space: nowrap; }
-.status { display: flex; align-items: center; gap: 8px; }
+.logo {
+  font-size: 20px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  flex: none;
+}
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.subtitle {
+  font-size: 10.5px;
+  color: #94a3b8;
+  letter-spacing: 1px;
+  margin-top: 1px;
+}
+.status { display: flex; align-items: center; gap: 10px; flex: none; }
 .busy { font-size: 11px; color: #fbbf24; animation: pulse 1.2s infinite; }
 @keyframes pulse { 50% { opacity: 0.4; } }
 .badge {
-  font-size: 11px; padding: 3px 9px; border-radius: 999px; font-weight: 600; white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px; padding: 5px 11px; border-radius: 999px; font-weight: 600; white-space: nowrap;
+  border: 1px solid transparent;
 }
-.badge.green { background: #064e3b; color: #6ee7b7; }
-.badge.red   { background: #7f1d1d; color: #fca5a5; }
-.badge.gray  { background: #334155; color: #cbd5e1; }
+.badge-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.25);
+}
+.badge.green { background: rgba(6, 78, 59, 0.55); color: #6ee7b7; border-color: rgba(52, 211, 153, 0.35); }
+.badge.red   { background: rgba(127, 29, 29, 0.6); color: #fca5a5; border-color: rgba(248, 113, 113, 0.4); }
+.badge.gray  { background: rgba(51, 65, 85, 0.7); color: #cbd5e1; }
 
 /* ── 主舞台：侧栏 + 地图 ── */
 .stage {
@@ -138,61 +213,101 @@ h1 { margin: 0; font-size: 14px; font-weight: 700; white-space: nowrap; }
 
 /* ── 左侧面板 ── */
 .sidebar {
-  width: 272px;
+  width: 280px;
   flex: none;
   display: flex;
   flex-direction: column;
-  background: #f8fafc;
-  border-right: 1px solid #e2e8f0;
+  background: var(--c-surface-2);
+  border-right: 1px solid var(--c-border);
+  box-shadow: 1px 0 8px rgba(15, 23, 42, 0.05);
   overflow: hidden;
+  z-index: 500;
 }
-.tabs {
-  display: flex;
-  padding: 8px 8px 0;
-  gap: 4px;
-}
-.tab {
-  flex: 1;
-  padding: 8px 0;
-  border: none;
-  border-radius: 8px 8px 0 0;
-  background: #e2e8f0;
-  font-size: 13px;
-  cursor: pointer;
-  color: #64748b;
-  font-weight: 500;
-  transition: all 0.15s;
-}
-.tab.active {
-  background: #fff;
-  color: #1e293b;
-  font-weight: 700;
-  box-shadow: 0 -1px 3px rgba(0,0,0,0.06);
-}
-.tab-content {
+/* ── 手风琴分区 ── */
+.accordion {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 14px;
-  background: #fff;
-  margin: 0 8px;
-  border-radius: 0 0 8px 8px;
+  padding: 12px 12px 4px;
+}
+.acc-item {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.acc-item.open {
+  border-color: #dbe4f2;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.07);
+}
+.acc-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 12px 13px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--c-text);
+  transition: background 0.15s;
+}
+.acc-head:hover {
+  background: #f8fafc;
+}
+.acc-icon {
+  font-size: 15px;
+  line-height: 1;
+  flex: none;
+}
+.acc-title {
+  flex: 1;
+  text-align: left;
+}
+.acc-chev {
+  color: #94a3b8;
+  font-size: 12px;
+  transition: transform 0.2s;
+  transform: rotate(-90deg); /* 收起时朝右 */
+}
+.acc-item.open .acc-chev {
+  transform: rotate(0deg); /* 展开时朝下 */
+}
+.acc-body {
+  padding: 8px 14px 14px;
+  border-top: 1px solid var(--c-border);
 }
 
 /* ── 人口查询提示 ── */
 .hint-bar {
-  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0 12px 12px;
+  padding: 9px 12px;
   font-size: 11px;
-  color: #64748b;
-  background: #f1f5f9;
-  border-top: 1px solid #e2e8f0;
-  text-align: center;
+  color: #5b6b82;
+  background: linear-gradient(180deg, #f0f5fb, #e8eff8);
+  border: 1px solid #dbe4f0;
+  border-radius: 10px;
 }
+.hint-icon { font-size: 13px; }
 
 /* ── 地图区域 ── */
 .map-area {
   flex: 1;
   position: relative;
   overflow: hidden;
+}
+.map-info {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
 }
 .map-legend {
   position: absolute;
@@ -214,10 +329,11 @@ h1 { margin: 0; font-size: 14px; font-weight: 700; white-space: nowrap; }
   background: #1f2937;
   color: #fee2e2;
   padding: 10px 18px;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 13px;
   z-index: 1500;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(248, 113, 113, 0.3);
 }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
@@ -226,14 +342,15 @@ h1 { margin: 0; font-size: 14px; font-weight: 700; white-space: nowrap; }
 .not-ready {
   flex: 1;
   display: flex; align-items: center; justify-content: center;
-  background: #f1f5f9;
+  background: var(--c-bg);
 }
 .nr-card {
-  background: #fff; border-radius: 14px; padding: 32px 40px;
+  background: var(--c-surface); border-radius: 16px; padding: 32px 40px;
   text-align: center; max-width: 420px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
+  border: 1px solid var(--c-border);
 }
-.nr-icon { font-size: 40px; }
+.nr-icon { font-size: 42px; }
 .nr-card h2 { margin: 8px 0; color: #b91c1c; }
 .nr-card p { color: #475569; font-size: 13px; line-height: 1.6; }
 .nr-card ul { text-align: left; display: inline-block; margin: 12px 0; font-size: 13px; list-style: none; padding: 0; }
@@ -242,7 +359,9 @@ h1 { margin: 0; font-size: 14px; font-weight: 700; white-space: nowrap; }
 .muted { color: #94a3b8; }
 code { background: #f1f5f9; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
 .nr-card button {
-  margin-top: 10px; padding: 8px 20px; border: none;
-  background: #2563eb; color: #fff; border-radius: 8px; cursor: pointer; font-size: 13px;
+  margin-top: 10px; padding: 9px 22px; border: none;
+  background: var(--c-primary); color: #fff; border-radius: 9px; cursor: pointer; font-size: 13px;
+  font-weight: 600; transition: background 0.15s;
 }
+.nr-card button:hover { background: var(--c-primary-d); }
 </style>
