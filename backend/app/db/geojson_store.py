@@ -95,7 +95,9 @@ def _clip_blind_zone(zone, boundary_metric, boundary_lnglat):
 # ── 内存数据 ──────────────────────────────────────────────────────────────────
 _loaded = False
 _pop_arr: np.ndarray = np.empty((0, 3), dtype=float)  # 列：lng, lat, value
-_facilities: list[dict] = []                          # {id,name,type,subtype,lng,lat,source}
+_polys: list = []                                      # (shapely Polygon, pop_value) 列表
+_pop_tree = None                                       # STRtree 空间索引，用于点查询
+_facilities: list[dict] = []                           # {id,name,type,subtype,lng,lat,source}
 _boundary_geojson: Optional[dict] = None
 _grid_step_m: Optional[float] = None                  # 人口网格近似边长（米），惰性计算并缓存
 
@@ -106,10 +108,12 @@ def _read_geojson(name: str) -> dict:
         return json.load(f)
 
 
-def _load_population() -> np.ndarray:
-    """读取人口栅格多边形，取每个网格中心点 + pop_count，得到 (N,3) 密度数组。"""
+def _load_population():
+    """读取人口栅格多边形，取每个网格中心点 + pop_count，同时构建 STRtree 用于点查询。"""
+    from shapely.geometry import shape as _shape
     gj = _read_geojson(POP_FILE)
     rows: list[tuple[float, float, float]] = []
+    polys: list = []
     for feat in gj.get("features", []):
         geom = feat.get("geometry") or {}
         if geom.get("type") != "Polygon":
@@ -120,7 +124,10 @@ def _load_population() -> np.ndarray:
         val = float((feat.get("properties") or {}).get("pop_count", 0) or 0)
         if val > 0:
             rows.append(((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, val))
-    return np.array(rows, dtype=float) if rows else np.empty((0, 3), dtype=float)
+            polys.append((_shape(geom), val))
+    tree = STRtree([p for p, v in polys]) if polys else None
+    arr = np.array(rows, dtype=float) if rows else np.empty((0, 3), dtype=float)
+    return arr, polys, tree
 
 
 def _load_facilities() -> list[dict]:
@@ -156,10 +163,10 @@ def _load_facilities() -> list[dict]:
 
 def load() -> None:
     """加载全部本地数据进内存（幂等）。在 FastAPI 启动时调用。"""
-    global _loaded, _pop_arr, _facilities, _boundary_geojson
+    global _loaded, _pop_arr, _polys, _pop_tree, _facilities, _boundary_geojson
     if _loaded:
         return
-    _pop_arr = _load_population()
+    _pop_arr, _polys, _pop_tree = _load_population()
     _facilities = _load_facilities()
     try:
         _boundary_geojson = _read_geojson(BOUNDARY_FILE)
@@ -237,53 +244,24 @@ async def query_heatmap(bbox: list[float], dataset: str) -> list[dict]:
     ]
 
 
-# ── 人口密度点查询（F12）──────────────────────────────────────────────────────
+# ── 人口密度点查询（F13）──────────────────────────────────────────────────────
 
-def _population_grid_step_m() -> float:
-    """估算人口网格的近似边长（米），供点查询判定点击是否落在栅格内。
-
-    人口点为规则网格的格心，取经/纬方向相邻格心的最小间距换算为米，取较大者作为格宽；
-    结果缓存于模块级 _grid_step_m，数据加载后不再变化。
-    """
-    global _grid_step_m
-    if _grid_step_m is not None:
-        return _grid_step_m
-    if _pop_arr.size == 0:
-        _grid_step_m = 0.0
-        return _grid_step_m
-
-    def _min_gap(vals: np.ndarray, m_per_deg: float) -> float:
-        uniq = np.unique(np.round(vals, 5))          # 归并浮点误差后取相邻唯一值间距
-        diffs = np.diff(uniq)
-        diffs = diffs[diffs > 1e-9]
-        return float(diffs.min()) * m_per_deg if diffs.size else 0.0
-
-    step = max(_min_gap(_pop_arr[:, 0], _M_PER_DEG_LNG), _min_gap(_pop_arr[:, 1], _M_PER_DEG_LAT))
-    _grid_step_m = step or 150.0                      # 兜底：数据异常时用约一个网格的经验值
-    return _grid_step_m
-
-
-async def query_population_at_point(lng: float, lat: float) -> Optional[dict]:
-    """查询距离指定坐标最近人口网格的密度值（人/km²）。
-
-    以向量化方式在局部米制坐标下取最近格心；若点击处距最近格心超过约一个网格
-    （判定为落在人口栅格覆盖范围外），返回 None，由路由层给出「无人口数据」提示。
-    """
+async def query_population_at_point(lng: float, lat: float) -> dict | None:
+    """查询指定坐标所属网格的人口密度值。"""
     _ensure_loaded()
-    if _pop_arr.size == 0:
+    if _pop_tree is None or not _polys:
         return None
-    dx = (_pop_arr[:, 0] - lng) * _M_PER_DEG_LNG
-    dy = (_pop_arr[:, 1] - lat) * _M_PER_DEG_LAT
-    d2 = dx * dx + dy * dy
-    i = int(np.argmin(d2))
-    if math.sqrt(float(d2[i])) > _population_grid_step_m():
+    from shapely.geometry import Point as _Point
+    idxs = _pop_tree.query(_Point(lng, lat), predicate="intersects")
+    if idxs.size == 0:
         return None
+    poly, val = _polys[int(idxs[0])]
     return {
         "lng": round(lng, 5),
         "lat": round(lat, 5),
-        "pop_density": round(float(_pop_arr[i, 2]), 1),
-        "cell_lng": round(float(_pop_arr[i, 0]), 5),
-        "cell_lat": round(float(_pop_arr[i, 1]), 5),
+        "pop_density": round(float(val), 1),
+        "cell_lng": round(poly.centroid.x, 5),
+        "cell_lat": round(poly.centroid.y, 5),
     }
 
 

@@ -2,7 +2,7 @@
 import { ref, onMounted, onBeforeUnmount, provide, watch } from 'vue'
 import L from 'leaflet'
 import { store } from '../stores/mapStore.js'
-import { bboxStringFromMap, HONGSHAN_BBOX, fmt } from '../utils/geoUtils.js'
+import { bboxStringFromMap, HONGSHAN_BBOX } from '../utils/geoUtils.js'
 import { api } from '../api.js'
 
 const el = ref(null)
@@ -101,8 +101,28 @@ onMounted(() => {
   if (Object.keys(bases).length > 1) layerCtrl.addTo(map)
   L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map)
 
-  // F12 点击地图查询人口密度
-  map.on('click', (e) => queryPopulationAt(e.latlng))
+  // F13 点击地图任意位置查询该点人口密度
+  let popQueryPopup = null
+  map.on('click', async (e) => {
+    if (popQueryPopup) map.closePopup(popQueryPopup)
+    const { lat, lng } = e.latlng
+    try {
+      const data = await api.populationAtPoint(lng, lat)
+      if (!data.pop_density) {
+        popQueryPopup = L.popup().setLatLng([lat, lng]).setContent('该位置无人口数据').openOn(map)
+        return
+      }
+      popQueryPopup = L.popup()
+        .setLatLng([lat, lng])
+        .setContent(
+          `<b>人口密度</b>&nbsp; ${data.pop_density} 人/km²<br>` +
+          `<small>网格 ${data.cell_lat.toFixed(4)}, ${data.cell_lng.toFixed(4)}</small>`,
+        )
+        .openOn(map)
+    } catch {
+      // 静默失败，不打断用户操作
+    }
+  })
 
   // 研究区边界轮廓 + 自动定位（F1）
   if (store.boundary) drawBoundary()

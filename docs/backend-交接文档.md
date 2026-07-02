@@ -1,8 +1,8 @@
 # 后端交接文档
 
 **项目**：人口分布热力与公共设施叠加分析系统  
-**后端版本**：v1.5.0+  
-**交接日期**：2026-07-02
+**后端版本**：v1.5.0  
+**交接日期**：2026-06-24（更新于 2026-07-01）
 
 ---
 
@@ -27,16 +27,16 @@
 ```
 backend/
 ├── app/
-│   ├── main.py              # FastAPI 应用入口，lifespan 管理连接池 / 预载数据
+│   ├── main.py              # FastAPI 应用入口，lifespan 管理连接池/数据预载
 │   ├── db/
-│   │   ├── geojson_store.py  # **默认后端**：shapely + numpy 本地文件，含 DBSCAN 聚类
-│   │   ├── postgis.py       # 可选后端：asyncpg + PostGIS 实现
-│   │   └── provider.py      # 数据后端选择器（DATA_BACKEND 环境变量切换）
+│   │   ├── provider.py       # 按 DATA_BACKEND 选择数据后端，对路由透明
+│   │   ├── geojson_store.py  # 默认后端：shapely 读本地 GeoJSON 做全部空间计算
+│   │   └── postgis.py        # 可选后端：连接池 + PostGIS 空间查询函数
 │   └── routers/
-│       ├── statistics.py    # 9 个空间分析接口（含 3 个 all 类型 + 人口点查询）
-│       └── meta.py          # /meta/status + /meta/boundary 元数据接口
+│       ├── statistics.py     # 六个分析 API 路由
+│       └── meta.py           # 数据自检 + 边界元数据接口
 ├── sql/
-│   └── schema.sql           # 建表 + 索引 DDL（仅 PostGIS 路径需要）
+│   └── schema.sql            # PostGIS 建表 + 索引 DDL（仅 PostGIS 路径）
 └── requirements.txt
 ```
 
@@ -96,17 +96,15 @@ Base URL：`http://localhost:8000/api/v1`
 
 | 方法 | 路径 | 功能 |
 | --- | --- | --- |
-| GET | `/population/heatmap` | 人口密度热力点 |
-| GET | `/population/at-point` | **（F12）** 点击地图查询该点人口密度 |
-| GET | `/facilities` | 公共设施分页列表，可按类型过滤 |
-| GET | `/analysis/supply-demand` | 覆盖率 + 千人设施量统计（单类型） |
-| GET | `/analysis/supply-demand-all` | 覆盖率 + 千人设施量统计（全类型合并） |
-| GET | `/analysis/blind-spots` | 供给盲区识别，返回 GeoJSON FeatureCollection（单类型） |
-| GET | `/analysis/blind-spots-all` | 供给盲区识别，返回 GeoJSON FeatureCollection（全类型） |
-| GET | `/analysis/coverage` | 设施缓冲覆盖区合并，返回 GeoJSON 几何（单类型） |
-| GET | `/analysis/coverage-all` | 设施缓冲覆盖区合并，返回 GeoJSON FeatureCollection（全类型） |
-| GET | `/meta/status` | 数据状态自检（F11） |
-| GET | `/meta/boundary` | 研究区边界 GeoJSON |
+| GET | /population/heatmap | 人口密度热力点，支持 WorldPop / GHSL |
+| GET | /population/at-point | 人口密度点查询（F13），返回指定坐标所属网格的人口密度 |
+| GET | /facilities | 公共设施分页列表，可按类型过滤 |
+| GET | /analysis/supply-demand | 覆盖率 + 千人设施量统计 |
+| GET | /analysis/blind-spots | 供给盲区识别，返回 GeoJSON |
+| GET | /analysis/coverage | 设施缓冲覆盖区合并，返回 GeoJSON |
+| GET | /analysis/coverage-all | 三类设施合并覆盖区（全类型） |
+| GET | /analysis/blind-spots-all | 三类设施合并盲区（全类型） |
+| GET | /analysis/supply-demand-all | 三类设施合并供需统计（全类型） |
 
 **公共参数**
 
@@ -156,10 +154,13 @@ DATA_BACKEND=postgis DATABASE_URL=postgresql://postgres:postgres@localhost:5432/
 
 ---
 
-## 七、已知限制与后续规划
+## 七、待办 / 已知限制
 
-- **盲区聚类**：✅ 已实现基于网格的连通域聚类（`_cluster_blind_points`），可将散点拆分为多个独立盲区多边形，替代原单一凸包方案。
-- **认证**：当前无鉴权，仅适合内网部署；上线前需补充 API Key 或 JWT。
-- **dataset 参数**：当前仅使用 WorldPop 数据集，`dataset` 参数被兼容性接受但未实际切换。
-- **PostGIS 数据导入**：PostGIS 路径的 `population_grid` 和 `facilities` 表需外部脚本导入，文件后端无此需求。
-- **后端双模式**：默认文件后端（`geojson_store.py`）开箱即用；可选 PostGIS（`postgis.py`）需设 `DATA_BACKEND=postgis` 并配置 `DATABASE_URL`。两者函数签名和返回结构一致，前端透明切换。
+- **数据后端（已更新）**：现支持两种后端，由环境变量 `DATA_BACKEND` 选择：
+  - `geojson`（**默认**）：直接读取 `data/` 目录下的本地 GeoJSON，使用 shapely 完成空间计算，**无需数据库，开箱即用**；实现见 `app/db/geojson_store.py`。
+  - `postgis`：使用 PostgreSQL + PostGIS（本文档其余部分描述的路径），需先导入数据。
+  数据后端的选择对前端完全透明，各接口的请求/响应格式一致。另新增 `/meta/status`（数据自检 F11）与 `/meta/boundary`（研究区边界）两个接口。
+- **数据导入（PostGIS 路径）**：`population_grid` 和 `facilities` 表仍需外部脚本从 GHSL/WorldPop/OSM 导入；文件后端则无此需求。
+- **认证**：当前无鉴权，仅适合内网部署；上线前需补充 API Key 或 JWT
+- **dataset 参数**：`/analysis/supply-demand`、`/blind-spots`、`/coverage` 三个接口的人口统计暂未暴露 `dataset` 参数，默认聚合所有数据集；若同时导入多套数据会重复计数，后续可扩展
+- **盲区聚合粒度**：当前将所有盲区点聚合为单个凸包，如需多个独立盲区多边形需引入 DBSCAN 聚类

@@ -69,7 +69,7 @@ async def population_heatmap(
     }
 
 
-# ── 人口密度点查询（F12）───────────────────────────────────────────────────────
+# ── 人口密度点查询（F13）───────────────────────────────────────────────────────
 
 @router.get("/population/at-point", summary="查询指定坐标的人口密度")
 async def population_at_point(
